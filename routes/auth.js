@@ -1,0 +1,64 @@
+var express = require('express');
+var router = express.Router();
+let userController = require('../controllers/users')
+let { RegisterValidator, changePasswordValidator, handleResultValidator } = require('../utils/validatorHandler')
+let bcrypt = require('bcrypt')
+let {checkLogin} = require('../utils/authHandler')
+let { signToken } = require('../utils/jwtHandler')
+/* GET home page. */
+router.post('/register', RegisterValidator, handleResultValidator, async function (req, res, next) {
+    let newUser = userController.CreateAnUser(
+        req.body.username,
+        req.body.password,
+        req.body.email,
+        "69aa8360450df994c1ce6c4c"
+    );
+    await newUser.save()
+    res.send({
+        message: "dang ki thanh cong"
+    })
+});
+router.post('/login', async function (req, res, next) {
+    let { username, password } = req.body;
+    let getUser = await userController.FindByUsername(username);
+    if (!getUser) {
+        res.status(403).send("tai khoan khong ton tai")
+    } else {
+        if (getUser.lockTime && getUser.lockTime > Date.now()) {
+            res.status(403).send("tai khoan dang bi ban");
+            return;
+        }
+        if (bcrypt.compareSync(password, getUser.password)) {
+            await userController.SuccessLogin(getUser);
+            let token = signToken({
+                id: getUser._id
+            })
+            res.send(token)
+        } else {
+            await userController.FailLogin(getUser);
+            res.status(403).send("thong tin dang nhap khong dung")
+        }
+    }
+
+});
+router.get('/me',checkLogin,function(req,res,next){
+    res.send(req.user)
+})
+
+router.post('/changepassword', checkLogin, changePasswordValidator, handleResultValidator, async function (req, res, next) {
+    let { oldpassword, newpassword } = req.body;
+
+    if (!bcrypt.compareSync(oldpassword, req.user.password)) {
+        return res.status(400).send('oldpassword khong dung');
+    }
+
+    req.user.password = newpassword;
+    await req.user.save();
+
+    res.send({
+        message: 'doi mat khau thanh cong'
+    });
+})
+
+
+module.exports = router;
